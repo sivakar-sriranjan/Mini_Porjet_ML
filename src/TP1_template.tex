@@ -1,0 +1,102 @@
+
+% ============== 1) INTRODUCTION (≤ ~1 page) ==============
+\section{Introduction}
+Jeu de données \texttt{beer\_quality.xlsx} (1599 lignes, 11 variables explicatives quantitatives, cible \texttt{quality}).
+Split 70/30 avec stratification grossière. Pour la classification multiclasse, nous appliquons des seuils fixes sur la cible~: \textbf{classe 0} si $y\le 5$, \textbf{classe 1} si $y=6$, \textbf{classe 2} si $y\ge 7$. Pour la binaire, nous utilisons la médiane ($6$).
+Nous comparons AdaBoost (binaire), RandomForest (multiclasse, avec/ sans SMOTE), et Bagging(MLP).
+
+\paragraph{Objectif et métriques.}
+Comparer des méthodes d'ensemble sur la qualité de prédiction et le coût. Nous rapportons principalement le \textbf{F1-score} (macro en multiclasse), complété par des \textbf{matrices de confusion} (test). Nous mesurons aussi les \textbf{temps d'apprentissage} et \textbf{d'inférence}.
+
+\paragraph{Justification des seuils.}
+Les notes étant entières (3–8) et très concentrées autour de 5–6, des seuils fixes ($\le 5, =6, \ge 7$) offrent une lecture métier claire et évitent les effets de bord observés avec des tertiles quand de nombreuses valeurs sont égales.
+
+\paragraph{Pré-traitements et fuite de données.}
+Standard pré-traitement minimal (valeurs numériques, pas d'encodage catégoriel requis). \textbf{SMOTE} est éventuellement appliqué \emph{uniquement} sur l'apprentissage (jamais sur le test) pour éviter toute fuite d'information.
+
+% ============== 2) RÉSULTATS EXPÉRIMENTAUX (≤ ~2 pages) ==============
+\section{Résultats expérimentaux}
+
+\subsection{Protocole expérimental}
+- Découpage 70/30 (stratifié). Les seuils de la cible sont fixés avant toute modélisation.\par
+- En multiclasse, deux ensembles sont appris: \emph{déséquilibré} et \emph{SMOTE} (rés-échantillonné sur apprentissage).\par
+- Évaluation sur le même jeu de test pour garantir la comparabilité.\par
+
+\subsection{Réglages des modèles (extraits)}
+- \textbf{RandomForest} (multiclasse): \texttt{n\_estimators} $\in\{50,100,150,200,300,400\}$, \texttt{max\_depth} $\in\{\texttt{None},5,10,15,20,30\}$; sélection par recherche aléatoire (CV=5, score=F1-macro).\par
+- \textbf{AdaBoost} (binaire): arbres faibles profondeur $\in\{1,5\}$, \texttt{n\_estimators} $\in[10,200]$; choix sur validation.\par
+- \textbf{Bagging(MLP)} (multiclasse): meilleur MLP (validation) ensuite ensaché avec \texttt{n\_estimators} $\in\{5,10,20,30,40\}$.\par
+
+\subsection{Synthèse quantitative}
+\begin{table}[H]
+  \centering
+  \caption{Récapitulatif (F1 test, temps).}
+  \input{src/input/table_ensembles_summary.tex}
+\end{table}
+
+\subsection{Multiclasse}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.6\linewidth]{src/input/fig_ensembles_multiclass_f1.png}
+  \caption{F1 test (multiclasse).}
+\end{figure}
+
+\paragraph{Analyse rapide.}
+RandomForest surpasse Bagging(MLP) en F1-macro. L'ajout de SMOTE améliore le \emph{rappel} de la classe rare, ce qui augmente le F1 global. Les temps d'inférence RF restent faibles, ce qui en fait un bon candidat opérationnel. En pratique, on privilégie la configuration offrant un bon compromis \emph{plateau de F1} et \emph{coûts modestes}.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.45\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_rf_confusion_imbalanced.png}
+    \caption{RF — déséquilibré}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.45\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_rf_confusion_smote.png}
+    \caption{RF — SMOTE}
+  \end{subfigure}
+  \caption{Matrices de confusion RF (test).}
+\end{figure}
+
+\paragraph{Lecture des matrices.}
+Sans SMOTE, la classe élevée est sous-détectée (faux négatifs). Avec SMOTE, la diagonale associée à la classe rare s'améliore, au prix éventuel d'une légère baisse de précision sur les classes majoritaires — le F1-macro synthétise ce compromis.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.6\linewidth]{src/input/fig_rf_f1_curve.png}
+  \caption{RF: F1 vs \texttt{n\_estimators} (max\_depth=None).}
+\end{figure}
+
+\paragraph{Tendance.}
+Le F1 d'entraînement croît avec \texttt{n\_estimators} alors que le F1 test \emph{plateau} au-delà d'un certain seuil: choisir dans la zone d'inflexion évite des coûts inutiles et réduit le risque de sur-apprentissage.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.65\linewidth]{src/input/fig_rf_feature_importances.png}
+  \caption{Importances des variables (RF).}
+\end{figure}
+
+\paragraph{Variables clés.}
+Les variables liées à l'alcool et aux sulfates ressortent, ainsi que l'acidité volatile et la densité — résultats cohérents avec l'analyse exploratoire et la littérature sur la qualité des vins.
+
+\subsection{Binaire}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.5\linewidth]{src/input/fig_ensembles_binary_f1.png}
+  \caption{F1 test (binaire) — AdaBoost.}
+\end{figure}
+
+\paragraph{Analyse rapide.}
+AdaBoost (binaire) atteint un F1-test élevé, mais le coût d'apprentissage peut croître avec \texttt{n\_estimators} et la profondeur de base. Utile lorsque la séparation est proche du linéaire après transformation; sinon, RF peut être plus robuste au bruit. Les importances convergent avec RF (cohérence).
+
+% ============== 3) CONCLUSION (≤ ~1 page) ==============
+\section{Conclusion — Méthodes d'ensemble}
+- RandomForest + SMOTE offre le meilleur compromis (multiclasse), améliorant le rappel des classes rares et le F1-macro.\par
+- AdaBoost (binaire) atteint un F1-test élevé, mais ses temps peuvent être supérieurs selon les réglages.\par
+- Le bagging du MLP réduit la variance mais demeure en retrait, compte tenu des tailles d'échantillons et de l'instabilité du base learner.\par
+En pratique, nous retenons \textbf{RandomForest + SMOTE} pour la multiclasse.
+
+\end{document}
+
+

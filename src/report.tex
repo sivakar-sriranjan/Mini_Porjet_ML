@@ -1,0 +1,298 @@
+
+
+
+% =========================
+% PARTIE A — Préparation & EDA
+% =========================
+\section{Partie A Préparation des données et analyse exploratoire}
+
+\paragraph{Jeu de données.}
+Le fichier \texttt{beer\_quality.xlsx} contient 1599 observations et 11 variables explicatives quantitatives,
+ainsi qu'une cible entière \texttt{quality}. Nous séparons les données en un ensemble d'apprentissage (70\%)
+et un ensemble de test (30\%). Pour préserver la distribution de la cible lors du découpage, nous appliquons
+une \emph{stratification} en transformant \texttt{quality} en tranches (binning).
+
+\paragraph{Statistiques descriptives.}
+Le Tableau~\ref{tab:descXtrain} résume les statistiques élémentaires (moyenne, écart-type, min/max, quartiles)
+des variables explicatives sur le jeu d'apprentissage.
+
+% ---- Table stats (inclure le .tex généré) ----
+\input{src/input/table_stats_Xtrain}
+\begin{figure}[H]
+  \centering
+
+  % Ligne 1
+  \begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_hist_ytrain.png}
+    \caption{Distribution de \texttt{y\_train}}
+    \label{fig:hist_ytrain}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_corr_heatmap.png}
+    \caption{Matrice de corrélation (\texttt{X\_train})}
+    \label{fig:corr_heat}
+  \end{subfigure}
+
+  \vspace{0.5em}
+
+  % Ligne 2
+  \begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_corr_top5.png}
+    \caption{Top 5 corrélations positives}
+    \label{fig:corr_top5}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_corr_bot5.png}
+    \caption{Top 5 corrélations négatives}
+    \label{fig:corr_bot5}
+  \end{subfigure}
+
+  \caption{Analyse exploratoire : cible, corrélations entre variables et avec \texttt{quality}.}
+  \label{fig:eda_global}
+\end{figure}
+
+
+
+% =========================
+% PARTIE B — Classification binaire et Ensemble Learning
+% =========================
+\section{Partie B Classification binaire et Ensemble Learning}
+
+\paragraph{Objectif.}
+Nous transformons la variable cible \texttt{quality} en une variable binaire \texttt{ybin} pour distinguer
+les bières de \emph{bonne qualité} des autres.
+Le seuil choisi est la médiane (6.0), de sorte que :
+\[
+y_{\text{bin}}=\begin{cases}
+1 & \text{si } \texttt{quality}\ge6,\\
+0 & \text{sinon.}
+\end{cases}
+\]
+Le découpage des données reste stratifié (70 \% apprentissage / 30 \% test) afin de préserver la proportion
+des deux classes.
+
+\paragraph{Arbre de décision.}
+Un arbre de décision est entraîné et optimisé par une \emph{Randomized Search CV} (5 plis) sur les principaux
+hyperparamètres : \texttt{max\_depth}, \texttt{min\_samples\_split}, \texttt{min\_samples\_leaf},
+\texttt{max\_features} et \texttt{ccp\_alpha}.  
+Les meilleurs réglages obtenus sont :
+\begin{center}
+\texttt{max\_depth=12, min\_samples\_split=5, min\_samples\_leaf=3, max\_features=log2, ccp\_alpha=0.001.}
+\end{center}
+L’accuracy moyenne en validation croisée atteint 0.736 et l’accuracy sur le jeu de test 0.723.
+\[
+\text{Matrice de confusion (test)}=
+\begin{bmatrix}154 & 69\\ 64 & 193\end{bmatrix}.
+\]
+
+% ---- Résultats arbre optimisé (insérer un .tex généré) ----
+\paragraph{AdaBoost avec arbres faibles.}
+Nous entraînons AdaBoost avec des arbres de décision peu profonds en tant qu'apprenants de base et traçons l'accuracy en fonction de \texttt{n\_estimators} en apprentissage et validation pour deux profondeurs:
+\begin{itemize}
+  \item \textbf{max\_depth = 1} (stumps) : apprenants très faibles, biais élevé, variance faible.
+  \item \textbf{max\_depth = 5} : apprenants plus expressifs, biais plus faible, variance plus élevée.
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+
+  \begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_adaboost_acc_depth1.png}
+    \caption{Accuracy vs \texttt{n\_estimators} (max\_depth=1)}
+    \label{fig:ab_acc_d1}
+  \end{subfigure}\hfill
+  \begin{subfigure}[b]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_adaboost_acc_depth5.png}
+    \caption{Accuracy vs \texttt{n\_estimators} (max\_depth=5)}
+    \label{fig:ab_acc_d5}
+  \end{subfigure}
+
+  \caption{Courbes d'accuracy AdaBoost en apprentissage et validation.}
+  \label{fig:ab_curves}
+\end{figure}
+
+\paragraph{Sélection du modèle.}
+Nous choisissons la configuration maximisant l'accuracy de validation, puis ré-entraînons le modèle sur tout l'apprentissage et évaluons en test. Le tableau suivant synthétise la configuration retenue et les performances (incluant les temps d'apprentissage et d'inférence).
+
+% ---- Résultats modèle AdaBoost retenu (insérer un .tex généré) ----
+\input{src/input/table_adaboost_best}
+
+\paragraph{Importance des variables.}
+Avec des arbres comme apprenants de base, AdaBoost fournit des \emph{importances de variables} (moyennées sur les estimateurs, selon les réductions d'impureté). La Figure~\ref{fig:ab_importances} affiche les variables par ordre d'importance décroissante.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\linewidth]{src/input/fig_adaboost_feature_importances.png}
+  \caption{Importance des variables pour le modèle AdaBoost retenu.}
+  \label{fig:ab_importances}
+\end{figure}
+
+\paragraph{Biais et variance.}
+\begin{itemize}
+  \item \textbf{max\_depth=1} : fort biais (modèles très simples), faible variance; AdaBoost réduit le biais en agrégeant de nombreux faibles apprenants.
+  \item \textbf{max\_depth=5} : biais plus faible, mais variance plus élevée; attention au sur-apprentissage si \texttt{n\_estimators} est trop grand.
+  \item \textbf{Sensibilité au bruit} : AdaBoost peut surpondérer des observations bruitées si mal classées de façon répétée.
+\end{itemize}
+
+\paragraph{Conclusion.}
+L’\textbf{AdaBoost avec arbres de profondeur 5} obtient les meilleurs résultats
+(\textbf{accuracy test = 0.8021}) et une meilleure stabilité entre apprentissage et validation.
+Il tire parti d’un ensemble de variables cohérentes avec l’analyse exploratoire :
+\texttt{alcohol}, \texttt{sulphates}, \texttt{volatile acidity} et les composés soufrés.
+Ce modèle offre donc le compromis le plus équilibré entre biais et variance pour prédire
+la qualité des bières.
+
+
+\section{Partie C}
+
+\subsection{Définition des classes}
+On transforme la variable continue \texttt{quality} en trois classes à seuils fixes:
+\begin{itemize}
+  \item Classe 0 (faible) : $y \le 5$,
+  \item Classe 1 (moyenne) : $y = 6$,
+  \item Classe 2 (élevée) : $y \ge 7$.
+\end{itemize}
+Ces seuils sont appliqués sur \texttt{y\_train} et \texttt{y\_test}. Ils sont lisibles ``métier'' et remplacent l'approche tertiles.
+
+\subsection{Répartition des classes (avant/après équilibrage)}
+\subsection*{Avant équilibrage}
+La répartition des classes dans les jeux d'apprentissage et de test est donnée ci-dessous.
+
+\begin{table}[H]
+  \centering
+  \caption{Effectifs par classe (avant équilibrage)}
+  \input{src/input/table_ymulti_counts.tex}
+\end{table}
+
+\paragraph{Réponse.} Le déséquilibre initial (surtout classe 2 plus rare) est compensé par SMOTE, ce qui facilite l'apprentissage des classes minoritaires et améliore souvent le F1-macro.
+
+\subsection{Réseau de neurones (MLP) et matrices de confusion}
+Nous évaluons un MLP (early stopping) en données déséquilibrées et après SMOTE. Les matrices de confusion en test sont présentées ci-dessous.
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_mlp_confusion_imbalanced.png}
+    \caption{MLP — données déséquilibrées}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_mlp_confusion_smote.png}
+    \caption{MLP — après SMOTE}
+  \end{subfigure}
+  \caption{Matrices de confusion (test) pour MLP}
+\end{figure}
+
+\paragraph{Réponse.} Dans nos exécutions, le F1-macro test MLP est d'environ 0{,}370 (déséquilibré) et 0{,}363 (SMOTE). L'effet de SMOTE est limité ici, mais peut aider selon les réglages.
+
+\subsection{Bagging avec MLP}
+La figure suivante montre l'évolution du F1-macro (train/validation) en fonction de \texttt{n\_estimators}. Le meilleur \texttt{n\_estimators} est ensuite évalué en test.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\linewidth]{src/input/fig_bagging_mlp_f1.png}
+  \caption{Bagging(MLP): F1-macro vs \texttt{n\_estimators}}
+\end{figure}
+
+\paragraph{Réponse.} En test, nous obtenons un F1-macro d'environ 0{,}349. Le bagging réduit la variance du MLP, mais la capacité/instabilité du base learner limite le gain ici.
+
+\subsection{Forêt aléatoire: F1 vs \texttt{n\_estimators}}
+Nous traçons la courbe F1-macro (train/test) pour \texttt{max\_depth=None} en fonction de \texttt{n\_estimators}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\linewidth]{src/input/fig_rf_f1_curve.png}
+  \caption{RandomForest: F1-macro vs \texttt{n\_estimators} (max\_depth=None)}
+\end{figure}
+
+\paragraph{Réponse.} Le F1 test se stabilise avec un nombre suffisant d'arbres; \texttt{n\_estimators} agit surtout sur la variance (agrégation). 
+
+\subsection{Random search des hyperparamètres (RF)}
+Nous optimisons \texttt{max\_depth} et \texttt{n\_estimators} via recherche aléatoire (F1-macro, CV=5). Le tableau récapitulatif est ci-dessous.
+
+\begin{table}[H]
+  \centering
+  \caption{Meilleur modèle RF (random search)}
+  \input{src/input/table_rf_randomsearch.tex}
+\end{table}
+
+\paragraph{Réponse.} Un des meilleurs modèles obtenus sur données déséquilibrées atteint un F1 test $\approx 0{,}659$ (train $\approx 1{,}0$), signe d'un risque de sur-apprentissage. Avec SMOTE, le F1 test monte à $\approx 0{,}679$.
+
+\subsection{Matrices de confusion (RF) — déséquilibré vs SMOTE}
+
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_rf_confusion_imbalanced.png}
+    \caption{RF — déséquilibré}
+  \end{subfigure}\hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{src/input/fig_rf_confusion_smote.png}
+    \caption{RF — après SMOTE}
+  \end{subfigure}
+  \caption{Matrices de confusion (test) pour RandomForest}
+\end{figure}
+
+\paragraph{Réponse.} SMOTE améliore le rappel de la classe rare (2) et le F1-macro global.
+
+\subsection{Importances des variables (RF) et comparaison à AdaBoost (B.3)}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\linewidth]{src/input/fig_rf_feature_importances.png}
+  \caption{Importances des variables — RandomForest (modèle optimal)}
+\end{figure}
+
+\paragraph{Réponse.} Les variables importantes en RF recoupent largement celles d'AdaBoost (B.3) — par ex. \textit{alcohol}, \textit{sulphates}, \textit{volatile acidity}, \textit{density}, \textit{total sulfur dioxide}, etc. Dans nos résultats, 9 variables communes dans le Top 10.
+
+\subsection{Tableau récapitulatif (RF — choix final)}
+Le tableau ci-dessous récapitule la comparaison déséquilibré vs SMOTE et le choix retenu pour RF en Partie C.
+
+\begin{table}[H]
+  \centering
+  \caption{Choix du meilleur RF (déséquilibré vs SMOTE)}
+  \input{src/input/table_rf_best_choice.tex}
+\end{table}
+
+\subsection{Choix du modèle (Partie C)} 
+Sur la tâche multiclasse, le modèle retenu est \textbf{RandomForest + SMOTE} (meilleur F1 test $\approx 0{,}679$). Il concilie performance et robustesse au déséquilibre. 
+
+\subsection*{Conclusion (Partie C)}
+\begin{itemize}
+  \item \textbf{Équilibrage} (SMOTE) réduit le biais de classe et améliore le F1-macro pour RF.
+  \item \textbf{MLP/Bagging} restent moins performants ici que la RF.
+  \item \textbf{RF} offre le meilleur compromis biais/variance et des importances cohérentes avec AdaBoost.
+\end{itemize}
+
+\newpage
+\section{Partie D — Conclusion générale sur les méthodes d'ensemble}
+Cette section rassemble les performances (F1 test) et les temps (apprentissage, inférence) des différentes méthodes évaluées.
+
+\begin{table}[H]
+  \centering
+  \caption{Tableau récapitulatif des méthodes d'ensemble (F1 test, temps)}
+  \input{src/input/table_ensembles_summary.tex}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\linewidth]{src/input/fig_ensembles_multiclass_f1.png}
+  \caption{Méthodes d'ensemble (multiclasse) — F1 test}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.5\linewidth]{src/input/fig_ensembles_binary_f1.png}
+  \caption{Méthodes d'ensemble (binaire) — F1 test}
+\end{figure}
+
+\paragraph{Réponse.} En multiclasse, les performances des méthodes d'ensemble sont proches, mais RandomForest + SMOTE obtient les meilleurs résultats. En binaire, AdaBoost atteint un F1-test plus élevé, mais l'apprentissage et l'inférence sont plus longs ; le meilleur compromis reste RandomForest + SMOTE en multiclasse.
